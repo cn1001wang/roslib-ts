@@ -1,15 +1,15 @@
 import EventEmitter from './EventEmitter';
-import Ros from './Ros';
+import { RosLike } from './Ros';
 import ServiceRequest, { ServiceResponse } from './ServiceRequest';
 
 interface ServiceOptions {
-  ros: Ros;
+  ros: RosLike;
   name: string;
   serviceType: string;
 }
 
 export default class Service extends EventEmitter {
-  private ros: Ros;
+  private ros: RosLike;
   private name: string;
   private serviceType: string;
   private isAdvertised = false;

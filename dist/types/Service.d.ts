@@ -1,8 +1,8 @@
 import EventEmitter from './EventEmitter';
-import Ros from './Ros';
+import { RosLike } from './Ros';
 import ServiceRequest, { ServiceResponse } from './ServiceRequest';
 interface ServiceOptions {
-    ros: Ros;
+    ros: RosLike;
     name: string;
     serviceType: string;
 }

@@ -1,7 +1,7 @@
 import EventEmitter from './EventEmitter';
-import Ros from './Ros';
+import { RosLike } from './Ros';
 interface TopicOptions {
-    ros: Ros;
+    ros: RosLike;
     name: string;
     messageType: string;
     compression?: string;
@@ -11,7 +11,7 @@ interface TopicOptions {
     queue_length?: number;
 }
 export default class Topic extends EventEmitter {
-    readonly ros: Ros;
+    readonly ros: RosLike;
     readonly name: string;
     readonly messageType: string;
     readonly compression?: string;

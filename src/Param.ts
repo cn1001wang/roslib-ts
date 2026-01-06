@@ -1,14 +1,14 @@
-import Ros from './Ros';
+import { RosLike } from './Ros';
 import Service from './Service';
 import ServiceRequest from './ServiceRequest';
 
 interface ParamOptions {
-  ros: Ros;
+  ros: RosLike;
   name: string;
 }
 
 export default class Param {
-  private ros: Ros;
+  private ros: RosLike;
   private name: string;
 
   constructor(options: ParamOptions) {

@@ -5,11 +5,20 @@ interface RosOptions {
   WebSocket?: typeof WebSocket;
 }
 
+export interface RosLike {
+  on(event: string, listener: Function): this;
+  once(event: string, listener: Function): this;
+  off(event: string, listener?: Function): this;
+  emit(event: string, ...args: any[]): boolean;
+  callOnConnection(message: any): void;
+  getNextId(): string;
+  readonly isConnected: boolean;
+}
+
 export default class Ros extends EventEmitter {
   private socket: WebSocket | null = null;
   private _isConnected = false;
   private idCounter = 0;
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private options: RosOptions;
   // private reconnectDelay = 1000;
 
@@ -42,12 +51,6 @@ export default class Ros extends EventEmitter {
       this.socket.onopen = () => {
         this._isConnected = true;
         this.emit('connection');
-        
-        // 清除重连定时器
-        if (this.reconnectTimer) {
-          clearTimeout(this.reconnectTimer);
-          this.reconnectTimer = null;
-        }
       };
 
       this.socket.onclose = () => {
@@ -74,11 +77,6 @@ export default class Ros extends EventEmitter {
       this.socket = null;
     }
     this._isConnected = false;
-    
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
   }
 
   private handleMessage(data: string): void {

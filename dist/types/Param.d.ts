@@ -1,6 +1,6 @@
-import Ros from './Ros';
+import { RosLike } from './Ros';
 interface ParamOptions {
-    ros: Ros;
+    ros: RosLike;
     name: string;
 }
 export default class Param {

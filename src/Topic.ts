@@ -1,8 +1,8 @@
 import EventEmitter from './EventEmitter';
-import Ros from './Ros';
+import { RosLike } from './Ros';
 
 interface TopicOptions {
-  ros: Ros;
+  ros: RosLike;
   name: string;
   messageType: string;
   compression?: string;
@@ -13,7 +13,7 @@ interface TopicOptions {
 }
 
 export default class Topic extends EventEmitter {
-  public readonly ros: Ros;
+  public readonly ros: RosLike;
   public readonly name: string;
   public readonly messageType: string;
   /// 消息压缩方式，可选值：'none', 'zlib', 'bzip2', 'png', 'cbor'
