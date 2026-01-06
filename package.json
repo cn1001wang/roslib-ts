@@ -7,6 +7,14 @@
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",
+  "homepage": "https://github.com/cn1001wang/roslib-ts#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cn1001wang/roslib-ts.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cn1001wang/roslib-ts/issues"
+  },
   "exports": {
     ".": {
       "import": "./dist/index.esm.js",
