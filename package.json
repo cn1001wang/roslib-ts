@@ -1,0 +1,47 @@
+{
+  "name": "roslib-ts",
+  "version": "0.1.0",
+  "description": "TypeScript-first ROSLIB implementation",
+  "author": "naviai",
+  "license": "MIT",
+  "main": "dist/index.cjs.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.esm.js",
+      "require": "./dist/index.cjs.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rollup -c",
+    "prepublishOnly": "pnpm build"
+  },
+  "keywords": [
+    "ros",
+    "roslib",
+    "robotics",
+    "typescript"
+  ],
+  "peerDependencies": {
+    "ws": "^8.0.0"
+  },
+  "packageManager": "pnpm@10.12.4",
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^29.0.0",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@rollup/plugin-typescript": "^12.3.0",
+    "rollup": "^4.54.0",
+    "rollup-plugin-dts": "^6.3.0",
+    "tslib": "^2.8.1",
+    "typescript": "^5.9.3"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  }
+}
