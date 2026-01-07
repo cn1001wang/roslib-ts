@@ -28,10 +28,12 @@ export default class Topic extends EventEmitter {
   public readonly queue_length?: number;
   private isSubscribed = false;
   private isAdvertised = false;
+/** 存储绑定的重连处理器，便于精准卸载 */
+  private _reconnectHandler: () => void;
 
   constructor(options: TopicOptions) {
     super();
-    
+
     this.ros = options.ros;
     this.name = options.name;
     this.messageType = options.messageType;
@@ -40,104 +42,122 @@ export default class Topic extends EventEmitter {
     this.queue_size = options.queue_size;
     this.latch = options.latch;
     this.queue_length = options.queue_length;
+
+    // 预定义重连逻辑
+    this._reconnectHandler = () => {
+      if (this.isSubscribed) {
+        this._sendSubscribe();
+      }
+      if (this.isAdvertised) {
+        this._sendAdvertise();
+      }
+    };
   }
 
-  subscribe(callback?: (message: any) => void): void {
-    if (this.isSubscribed) {
-      return;
-    }
-
+  /** 发送底层的订阅协议包 */
+  private _sendSubscribe(): void {
+    this.isSubscribed = true;
     const subscribeMessage = {
       op: 'subscribe',
       topic: this.name,
       type: this.messageType,
       ...(this.compression && { compression: this.compression }),
       ...(this.throttle_rate && { throttle_rate: this.throttle_rate }),
-      ...(this.queue_length && { queue_length: this.queue_length })
+      ...(this.queue_length && { queue_length: this.queue_length }),
     };
-
     this.ros.callOnConnection(subscribeMessage);
-    this.isSubscribed = true;
-
-    // 监听来自 ROS 的消息
-    this.ros.on(this.name, (message: any) => {
-      this.emit('message', message);
-      if (callback) {
-        callback(message);
-      }
-    });
-
-    // 监听连接关闭事件，重新订阅
-    this.ros.on('close', () => {
-      this.isSubscribed = false;
-    });
-
-    this.ros.on('connection', () => {
-      if (!this.isSubscribed) {
-        this.subscribe(callback);
-      }
-    });
   }
 
-  unsubscribe(): void {
-    if (!this.isSubscribed) {
-      return;
-    }
-
-    const unsubscribeMessage = {
-      op: 'unsubscribe',
-      topic: this.name
-    };
-
-    this.ros.callOnConnection(unsubscribeMessage);
-    this.isSubscribed = false;
-    
-    // 移除事件监听器
-    this.ros.off(this.name);
-  }
-
-  advertise(): void {
-    if (this.isAdvertised) {
-      return;
-    }
-
+  /** 发送底层的公告协议包 */
+  private _sendAdvertise(): void {
+    this.isAdvertised = true;
     const advertiseMessage = {
       op: 'advertise',
       topic: this.name,
       type: this.messageType,
       ...(this.latch && { latch: this.latch }),
-      ...(this.queue_size && { queue_size: this.queue_size })
+      ...(this.queue_size && { queue_size: this.queue_size }),
     };
-
     this.ros.callOnConnection(advertiseMessage);
-    this.isAdvertised = true;
+  }
 
-    // 监听连接关闭事件
-    this.ros.on('close', () => {
-      this.isAdvertised = false;
-    });
+  /**
+   * 订阅话题
+   * @param callback 接收消息的回调函数
+   */
+  subscribe(callback?: (message: any) => void): void {
+    if (this.isSubscribed) return;
 
-    this.ros.on('connection', () => {
-      if (!this.isAdvertised) {
-        this.advertise();
-      }
+    // 1. 先尝试移除已有的监听，防止重复挂载
+    this.ros.off('connection', this._reconnectHandler);
+    this.ros.off('close', this._handleClose);
+
+    // 2. 挂载监听
+    this.ros.on('connection', this._reconnectHandler);
+    this.ros.on('close', this._handleClose);
+
+    // 3. 执行物理订阅
+    this._sendSubscribe();
+
+    // 4. 监听来自 ROS 的消息分发
+    this.ros.on(this.name, (message: any) => {
+      this.emit('message', message);
+      if (callback) callback(message);
     });
   }
 
-  unadvertise(): void {
-    if (!this.isAdvertised) {
-      return;
+  /** 取消订阅 */
+  unsubscribe(): void {
+    if (!this.isSubscribed) return;
+
+    const unsubscribeMessage = {
+      op: 'unsubscribe',
+      topic: this.name,
+    };
+
+    this.ros.callOnConnection(unsubscribeMessage);
+    this.isSubscribed = false;
+
+    // 彻底清理：移除重连监听和消息监听
+
+    this.ros.off(this.name);
+    if(!this.isAdvertised){
+      this.ros.off('connection', this._reconnectHandler);
+      this.ros.off('close', this._handleClose);
     }
+  }
+
+  /** 公告话题（作为发布者） */
+  advertise(): void {
+    if (this.isAdvertised) return;
+
+    this.ros.off('connection', this._reconnectHandler);
+    this.ros.on('connection', this._reconnectHandler);
+    this.ros.on('close', this._handleClose);
+
+    this._sendAdvertise();
+  }
+
+  /** 取消公告 */
+  unadvertise(): void {
+    if (!this.isAdvertised) return;
 
     const unadvertiseMessage = {
       op: 'unadvertise',
-      topic: this.name
+      topic: this.name,
     };
 
     this.ros.callOnConnection(unadvertiseMessage);
     this.isAdvertised = false;
+
+    // 如果当前也没有订阅，则可以安全移除重连处理器
+    if (!this.isSubscribed) {
+      this.ros.off('connection', this._reconnectHandler);
+      this.ros.off('close', this._handleClose);
+    }
   }
 
+  /** 发布消息 */
   publish(message: any): void {
     if (!this.isAdvertised) {
       this.advertise();
@@ -146,9 +166,15 @@ export default class Topic extends EventEmitter {
     const publishMessage = {
       op: 'publish',
       topic: this.name,
-      msg: message
+      msg: message,
     };
 
     this.ros.callOnConnection(publishMessage);
   }
+
+  /** 内部状态处理：连接关闭时重置标志位 */
+  private _handleClose = () => {
+    this.isSubscribed = false;
+    this.isAdvertised = false;
+  };
 }

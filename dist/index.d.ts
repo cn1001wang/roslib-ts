@@ -21,7 +21,7 @@ interface RosLike {
     getNextId(): string;
     readonly isConnected: boolean;
 }
-declare class Ros extends EventEmitter {
+declare class Ros extends EventEmitter implements RosLike {
     private socket;
     private _isConnected;
     private idCounter;
@@ -183,12 +183,28 @@ declare class Topic extends EventEmitter {
     readonly queue_length?: number;
     private isSubscribed;
     private isAdvertised;
+    /** 存储绑定的重连处理器，便于精准卸载 */
+    private _reconnectHandler;
     constructor(options: TopicOptions);
+    /** 发送底层的订阅协议包 */
+    private _sendSubscribe;
+    /** 发送底层的公告协议包 */
+    private _sendAdvertise;
+    /**
+     * 订阅话题
+     * @param callback 接收消息的回调函数
+     */
     subscribe(callback?: (message: any) => void): void;
+    /** 取消订阅 */
     unsubscribe(): void;
+    /** 公告话题（作为发布者） */
     advertise(): void;
+    /** 取消公告 */
     unadvertise(): void;
+    /** 发布消息 */
     publish(message: any): void;
+    /** 内部状态处理：连接关闭时重置标志位 */
+    private _handleClose;
 }
 
 declare class ServiceRequest {
@@ -214,10 +230,25 @@ declare class Service extends EventEmitter {
     private name;
     private serviceType;
     private isAdvertised;
+    /** 存储绑定的重连处理器 */
+    private _reconnectHandler;
+    /** 存储服务请求处理函数，便于卸载 */
+    private _currentServiceCallback;
     constructor(options: ServiceOptions);
     callService(request: ServiceRequest, callback?: (response: ServiceResponse) => void, failedCallback?: (error: any) => void): Promise<ServiceResponse>;
-    advertise(callback: (request: ServiceRequest, response: ServiceResponse) => boolean | void): void;
+    /** 发送底层的服务公告协议 */
+    private _sendAdvertise;
+    /**
+     * 公告服务（服务端模式）
+     * @param callback 处理请求并返回结果的回调
+     */
+    advertise(callback: (request: ServiceRequest, response: ServiceResponse) => any): void;
+    /**
+     * 取消服务公告
+     */
     unadvertise(): void;
+    /** 内部状态处理：连接关闭时重置标志位 */
+    private _handleClose;
 }
 
 interface ParamOptions {
@@ -242,7 +273,7 @@ declare class TopicManager {
     unsubscribe(name: string, callback?: Callback): void;
     clearAll(): void;
     resubscribeAll(ros: any): void;
-    public(name: string, messageType: string, data: any): void;
+    publish(name: string, messageType: string, data: any): void;
 }
 declare class ServiceManager {
     private ros;

@@ -84,7 +84,13 @@ export class TopicManager {
     });
   }
 
-  public(name: string, messageType: string, data: any){
+  publish(name: string, messageType: string, data: any){
+    if(!this.ros){
+      throw new Error('ros instance is not initialized')
+    }
+    if (!this.ros.isConnected) {
+      console.warn(`ROS not connected, cannot publish to ${name}, ${name} in messageQueue when ros reconnected`);
+    }
     const chatter = new Topic({
       ros: this.ros,
       name,
@@ -113,10 +119,10 @@ export class ServiceManager {
   ): Promise<any> {
     return new Promise((resolve, reject) => {
       if(!this.ros){
-        throw new Error('ros instance is not initialized')
+        return reject(new Error('ros instance is not initialized'))
       }
       if (!this.ros.isConnected) {
-        console.warn(`ROS not connected, cannot subscribe to ${name}, ${name} in messageQueue when ros reconnected`);
+        return reject(new Error(`ROS not connected, cannot call service ${name}`));
       }
 
       let timer: ReturnType<typeof setTimeout> | null = null;
@@ -175,11 +181,11 @@ export class ParamManager {
     return new Promise((resolve, reject) => {
       const ros = this.ros
 
-      if(!ros){
-        throw new Error('ros instance is not initialized')
+      if(!this.ros){
+        return reject(new Error('ros instance is not initialized'))
       }
-      if (!ros.isConnected) {
-        console.warn(`ROS not connected, cannot get to ${name}, ${name} in messageQueue when ros reconnected`);
+      if (!this.ros.isConnected) {
+        return reject(new Error(`ROS not connected, cannot get param ${name}`));
       }
 
       const param = new Param({ ros, name });
@@ -207,11 +213,11 @@ export class ParamManager {
     return new Promise((resolve, reject) => {
       const ros = this.ros
 
-      if(!ros){
-        throw new Error('ros instance is not initialized')
+      if(!this.ros){
+        return reject(new Error('ros instance is not initialized'))
       }
-      if (!ros.isConnected) {
-        console.warn(`ROS not connected, cannot set to ${name}, ${name} in messageQueue when ros reconnected`);
+      if (!this.ros.isConnected) {
+        return reject(new Error(`ROS not connected, cannot set param ${name}`));
       }
 
       const param = new Param({ ros, name });
@@ -231,11 +237,11 @@ export class ParamManager {
   delete(name: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const ros = this.ros
-      if(!ros){
-        throw new Error('ros instance is not initialized')
+      if(!this.ros){
+        return reject(new Error('ros instance is not initialized'))
       }
-      if (!ros.isConnected) {
-        console.warn(`ROS not connected, cannot delete to ${name}, ${name} in messageQueue when ros reconnected`);
+      if (!this.ros.isConnected) {
+        return reject(new Error(`ROS not connected, cannot delete param ${name}`));
       }
 
       const param = new Param({ ros, name });

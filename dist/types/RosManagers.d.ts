@@ -8,7 +8,7 @@ export declare class TopicManager {
     unsubscribe(name: string, callback?: Callback): void;
     clearAll(): void;
     resubscribeAll(ros: any): void;
-    public(name: string, messageType: string, data: any): void;
+    publish(name: string, messageType: string, data: any): void;
 }
 export declare class ServiceManager {
     private ros;

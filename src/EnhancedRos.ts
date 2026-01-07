@@ -205,6 +205,7 @@ export default class EnhancedRos extends EventEmitter implements RosLike {
     try {
       const WS = this.options?.WebSocket ?? WebSocket;
       this.socket = new WS(url);
+      const generation = this.connectGeneration; // 捕获当前代际
 
       this.socket.onopen = () => {
         // 连接成功，重置退避
@@ -217,6 +218,8 @@ export default class EnhancedRos extends EventEmitter implements RosLike {
       };
 
       this.socket.onclose = () => {
+        if (generation !== this.connectGeneration) return;
+        console.log('socket close')
         this.stopHeartbeat();
         this.socket = null;
         this.emit('close');
@@ -280,9 +283,16 @@ export default class EnhancedRos extends EventEmitter implements RosLike {
         return;
       }
 
-      // 退避：下次等待时间翻倍，直到上限后固定
+      // 进入新一轮连接生命周期
+      // this.connectGeneration += 1;
+      // 不能 this.cleanupForConnect(); 
+      // 关闭定时器、清除socket在close时候已经处理； 连接上后自然会重置 this.reconnectDelayMs = this.reconnectMinDelayMs; this.lastServerMessageAtMs = null;
+      // 现在讨论是否要不要connectGeneration++ ，我认为是有必要的，每一次重连都是一个新的socket
+      // 不能 清空messageQueue，messageQueue还等着重连成功自动重发
+      this.connectGeneration += 1;
       this.setState(EnhancedRosState.CONNECTING);
       this.openSocket(this.currentUrl);
+      // 退避：下次等待时间翻倍，直到上限后固定
       if (this.reconnectDelayMs < this.reconnectMaxDelayMs) {
         this.reconnectDelayMs = Math.min(this.reconnectMaxDelayMs, this.reconnectDelayMs * 2);
       }
@@ -305,11 +315,11 @@ export default class EnhancedRos extends EventEmitter implements RosLike {
       if (last && now - last > this.heartbeatIntervalMs * 2) {
         this.setState(EnhancedRosState.RECONNECTING);
         try {
-          this.socket.close();
+          this.closeSocket();
         } catch {}
-        if (!this.reconnectTimer) {
-          this.scheduleReconnect();
-        }
+        // if (!this.reconnectTimer) {
+        //   this.scheduleReconnect();
+        // }
         return;
       }
 

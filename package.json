@@ -1,7 +1,7 @@
 {
   "name": "roslib-ts",
-  "version": "0.1.1",
-  "description": "TypeScript-first ROSLIB implementation",
+  "version": "1.0.0-beta.1", 
+  "description": "Stable ROSLIB with EnhancedRos (Beta)",
   "author": "naviai",
   "license": "MIT",
   "main": "dist/index.cjs.js",
@@ -17,13 +17,22 @@
   },
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.esm.js",
-      "require": "./dist/index.cjs.js",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.cjs.js"
+    },
+    "./next": {
+      "types": "./dist/next.d.ts",
+      "import": "./dist/next.esm.js",
+      "require": "./dist/next.cjs.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE",
+    "API.md"
   ],
   "scripts": {
     "build": "rollup -c",

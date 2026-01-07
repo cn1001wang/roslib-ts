@@ -59,7 +59,6 @@ class EventEmitter {
 }
 
 class Ros extends EventEmitter {
-    // private reconnectDelay = 1000;
     constructor(options = {}) {
         super();
         this.socket = null;
@@ -306,6 +305,7 @@ class EnhancedRos extends EventEmitter {
         try {
             const WS = (_b = (_a = this.options) === null || _a === void 0 ? void 0 : _a.WebSocket) !== null && _b !== void 0 ? _b : WebSocket;
             this.socket = new WS(url);
+            const generation = this.connectGeneration; // 捕获当前代际
             this.socket.onopen = () => {
                 // 连接成功，重置退避
                 this.reconnectDelayMs = this.reconnectMinDelayMs;
@@ -316,6 +316,9 @@ class EnhancedRos extends EventEmitter {
                 this.flushQueue();
             };
             this.socket.onclose = () => {
+                if (generation !== this.connectGeneration)
+                    return;
+                console.log('socket close');
                 this.stopHeartbeat();
                 this.socket = null;
                 this.emit('close');
@@ -376,9 +379,16 @@ class EnhancedRos extends EventEmitter {
                 this.setState(EnhancedRosState.ERROR);
                 return;
             }
-            // 退避：下次等待时间翻倍，直到上限后固定
+            // 进入新一轮连接生命周期
+            // this.connectGeneration += 1;
+            // 不能 this.cleanupForConnect(); 
+            // 关闭定时器、清除socket在close时候已经处理； 连接上后自然会重置 this.reconnectDelayMs = this.reconnectMinDelayMs; this.lastServerMessageAtMs = null;
+            // 现在讨论是否要不要connectGeneration++ ，我认为是有必要的，每一次重连都是一个新的socket
+            // 不能 清空messageQueue，messageQueue还等着重连成功自动重发
+            this.connectGeneration += 1;
             this.setState(EnhancedRosState.CONNECTING);
             this.openSocket(this.currentUrl);
+            // 退避：下次等待时间翻倍，直到上限后固定
             if (this.reconnectDelayMs < this.reconnectMaxDelayMs) {
                 this.reconnectDelayMs = Math.min(this.reconnectMaxDelayMs, this.reconnectDelayMs * 2);
             }
@@ -401,12 +411,12 @@ class EnhancedRos extends EventEmitter {
             if (last && now - last > this.heartbeatIntervalMs * 2) {
                 this.setState(EnhancedRosState.RECONNECTING);
                 try {
-                    this.socket.close();
+                    this.closeSocket();
                 }
                 catch (_a) { }
-                if (!this.reconnectTimer) {
-                    this.scheduleReconnect();
-                }
+                // if (!this.reconnectTimer) {
+                //   this.scheduleReconnect();
+                // }
                 return;
             }
             // 发送 ping 保活
@@ -493,6 +503,11 @@ class Topic extends EventEmitter {
         super();
         this.isSubscribed = false;
         this.isAdvertised = false;
+        /** 内部状态处理：连接关闭时重置标志位 */
+        this._handleClose = () => {
+            this.isSubscribed = false;
+            this.isAdvertised = false;
+        };
         this.ros = options.ros;
         this.name = options.name;
         this.messageType = options.messageType;
@@ -501,72 +516,93 @@ class Topic extends EventEmitter {
         this.queue_size = options.queue_size;
         this.latch = options.latch;
         this.queue_length = options.queue_length;
+        // 预定义重连逻辑
+        this._reconnectHandler = () => {
+            if (this.isSubscribed) {
+                this._sendSubscribe();
+            }
+            if (this.isAdvertised) {
+                this._sendAdvertise();
+            }
+        };
     }
-    subscribe(callback) {
-        if (this.isSubscribed) {
-            return;
-        }
+    /** 发送底层的订阅协议包 */
+    _sendSubscribe() {
+        this.isSubscribed = true;
         const subscribeMessage = Object.assign(Object.assign(Object.assign({ op: 'subscribe', topic: this.name, type: this.messageType }, (this.compression && { compression: this.compression })), (this.throttle_rate && { throttle_rate: this.throttle_rate })), (this.queue_length && { queue_length: this.queue_length }));
         this.ros.callOnConnection(subscribeMessage);
-        this.isSubscribed = true;
-        // 监听来自 ROS 的消息
+    }
+    /** 发送底层的公告协议包 */
+    _sendAdvertise() {
+        this.isAdvertised = true;
+        const advertiseMessage = Object.assign(Object.assign({ op: 'advertise', topic: this.name, type: this.messageType }, (this.latch && { latch: this.latch })), (this.queue_size && { queue_size: this.queue_size }));
+        this.ros.callOnConnection(advertiseMessage);
+    }
+    /**
+     * 订阅话题
+     * @param callback 接收消息的回调函数
+     */
+    subscribe(callback) {
+        if (this.isSubscribed)
+            return;
+        // 1. 先尝试移除已有的监听，防止重复挂载
+        this.ros.off('connection', this._reconnectHandler);
+        this.ros.off('close', this._handleClose);
+        // 2. 挂载监听
+        this.ros.on('connection', this._reconnectHandler);
+        this.ros.on('close', this._handleClose);
+        // 3. 执行物理订阅
+        this._sendSubscribe();
+        // 4. 监听来自 ROS 的消息分发
         this.ros.on(this.name, (message) => {
             this.emit('message', message);
-            if (callback) {
+            if (callback)
                 callback(message);
-            }
-        });
-        // 监听连接关闭事件，重新订阅
-        this.ros.on('close', () => {
-            this.isSubscribed = false;
-        });
-        this.ros.on('connection', () => {
-            if (!this.isSubscribed) {
-                this.subscribe(callback);
-            }
         });
     }
+    /** 取消订阅 */
     unsubscribe() {
-        if (!this.isSubscribed) {
+        if (!this.isSubscribed)
             return;
-        }
         const unsubscribeMessage = {
             op: 'unsubscribe',
-            topic: this.name
+            topic: this.name,
         };
         this.ros.callOnConnection(unsubscribeMessage);
         this.isSubscribed = false;
-        // 移除事件监听器
+        // 彻底清理：移除重连监听和消息监听
         this.ros.off(this.name);
-    }
-    advertise() {
-        if (this.isAdvertised) {
-            return;
-        }
-        const advertiseMessage = Object.assign(Object.assign({ op: 'advertise', topic: this.name, type: this.messageType }, (this.latch && { latch: this.latch })), (this.queue_size && { queue_size: this.queue_size }));
-        this.ros.callOnConnection(advertiseMessage);
-        this.isAdvertised = true;
-        // 监听连接关闭事件
-        this.ros.on('close', () => {
-            this.isAdvertised = false;
-        });
-        this.ros.on('connection', () => {
-            if (!this.isAdvertised) {
-                this.advertise();
-            }
-        });
-    }
-    unadvertise() {
         if (!this.isAdvertised) {
-            return;
+            this.ros.off('connection', this._reconnectHandler);
+            this.ros.off('close', this._handleClose);
         }
+    }
+    /** 公告话题（作为发布者） */
+    advertise() {
+        if (this.isAdvertised)
+            return;
+        this.ros.off('connection', this._reconnectHandler);
+        this.ros.on('connection', this._reconnectHandler);
+        this.ros.on('close', this._handleClose);
+        this._sendAdvertise();
+    }
+    /** 取消公告 */
+    unadvertise() {
+        if (!this.isAdvertised)
+            return;
         const unadvertiseMessage = {
             op: 'unadvertise',
-            topic: this.name
+            topic: this.name,
         };
         this.ros.callOnConnection(unadvertiseMessage);
         this.isAdvertised = false;
+        // 如果当前也没有订阅，则可以安全移除重连处理器
+        if (!this.isSubscribed) {
+            this.ros.off('connection', this._reconnectHandler);
+            this.ros.off('close', this._handleClose);
+        }
     }
+    /** 发布消息 */
     publish(message) {
         if (!this.isAdvertised) {
             this.advertise();
@@ -574,7 +610,7 @@ class Topic extends EventEmitter {
         const publishMessage = {
             op: 'publish',
             topic: this.name,
-            msg: message
+            msg: message,
         };
         this.ros.callOnConnection(publishMessage);
     }
@@ -599,9 +635,21 @@ class Service extends EventEmitter {
     constructor(options) {
         super();
         this.isAdvertised = false;
+        /** 存储服务请求处理函数，便于卸载 */
+        this._currentServiceCallback = null;
+        /** 内部状态处理：连接关闭时重置标志位 */
+        this._handleClose = () => {
+            this.isAdvertised = false;
+        };
         this.ros = options.ros;
         this.name = options.name;
         this.serviceType = options.serviceType;
+        // 预定义重连恢复逻辑
+        this._reconnectHandler = () => {
+            if (this.isAdvertised && this._currentServiceCallback) {
+                this._sendAdvertise();
+            }
+        };
     }
     callService(request, callback, failedCallback) {
         return new Promise((resolve, reject) => {
@@ -642,18 +690,32 @@ class Service extends EventEmitter {
             this.ros.callOnConnection(serviceMessage);
         });
     }
-    advertise(callback) {
-        if (this.isAdvertised) {
-            return;
-        }
+    /** 发送底层的服务公告协议 */
+    _sendAdvertise() {
+        this.isAdvertised = true;
         const advertiseMessage = {
             op: 'advertise_service',
-            service: this.name,
-            type: this.serviceType
+            type: this.serviceType,
+            service: this.name
         };
         this.ros.callOnConnection(advertiseMessage);
-        this.isAdvertised = true;
-        // 监听服务请求
+    }
+    /**
+     * 公告服务（服务端模式）
+     * @param callback 处理请求并返回结果的回调
+     */
+    advertise(callback) {
+        if (this.isAdvertised)
+            return;
+        this._currentServiceCallback = callback;
+        // 1. 防御性卸载旧监听
+        this.ros.off('connection', this._reconnectHandler);
+        this.ros.off('close', this._handleClose);
+        this.ros.off('service_request:' + this.name);
+        // 2. 挂载生命周期监听
+        this.ros.on('connection', this._reconnectHandler);
+        this.ros.on('close', this._handleClose);
+        // 3. 监听服务请求
         this.ros.on('service_request:' + this.name, (message) => {
             const request = new ServiceRequest(message.args);
             const response = new ServiceResponse();
@@ -679,28 +741,26 @@ class Service extends EventEmitter {
                 this.ros.callOnConnection(errorMessage);
             }
         });
-        // 监听连接关闭事件
-        this.ros.on('close', () => {
-            this.isAdvertised = false;
-        });
-        this.ros.on('connection', () => {
-            if (!this.isAdvertised) {
-                this.advertise(callback);
-            }
-        });
+        // 4. 执行物理公告
+        this._sendAdvertise();
     }
+    /**
+     * 取消服务公告
+     */
     unadvertise() {
-        if (!this.isAdvertised) {
+        if (!this.isAdvertised)
             return;
-        }
         const unadvertiseMessage = {
             op: 'unadvertise_service',
             service: this.name
         };
         this.ros.callOnConnection(unadvertiseMessage);
         this.isAdvertised = false;
-        // 移除事件监听器
+        this._currentServiceCallback = null;
+        // 彻底清理资源：移除所有相关监听
         this.ros.off('service_request:' + this.name);
+        this.ros.off('connection', this._reconnectHandler);
+        this.ros.off('close', this._handleClose);
     }
 }
 
@@ -830,7 +890,13 @@ class TopicManager {
             });
         });
     }
-    public(name, messageType, data) {
+    publish(name, messageType, data) {
+        if (!this.ros) {
+            throw new Error('ros instance is not initialized');
+        }
+        if (!this.ros.isConnected) {
+            console.warn(`ROS not connected, cannot publish to ${name}, ${name} in messageQueue when ros reconnected`);
+        }
         const chatter = new Topic({
             ros: this.ros,
             name,
@@ -851,10 +917,10 @@ class ServiceManager {
     call(name, serviceType, request, timeout = this.defaultTimeout) {
         return new Promise((resolve, reject) => {
             if (!this.ros) {
-                throw new Error('ros instance is not initialized');
+                return reject(new Error('ros instance is not initialized'));
             }
             if (!this.ros.isConnected) {
-                console.warn(`ROS not connected, cannot subscribe to ${name}, ${name} in messageQueue when ros reconnected`);
+                return reject(new Error(`ROS not connected, cannot call service ${name}`));
             }
             let timer = null;
             const cleanup = () => {
@@ -901,11 +967,11 @@ class ParamManager {
     get(name, timeout = this.defaultTimeout) {
         return new Promise((resolve, reject) => {
             const ros = this.ros;
-            if (!ros) {
-                throw new Error('ros instance is not initialized');
+            if (!this.ros) {
+                return reject(new Error('ros instance is not initialized'));
             }
-            if (!ros.isConnected) {
-                console.warn(`ROS not connected, cannot get to ${name}, ${name} in messageQueue when ros reconnected`);
+            if (!this.ros.isConnected) {
+                return reject(new Error(`ROS not connected, cannot get param ${name}`));
             }
             const param = new Param({ ros, name });
             const timer = setTimeout(() => {
@@ -928,11 +994,11 @@ class ParamManager {
     set(name, value) {
         return new Promise((resolve, reject) => {
             const ros = this.ros;
-            if (!ros) {
-                throw new Error('ros instance is not initialized');
+            if (!this.ros) {
+                return reject(new Error('ros instance is not initialized'));
             }
-            if (!ros.isConnected) {
-                console.warn(`ROS not connected, cannot set to ${name}, ${name} in messageQueue when ros reconnected`);
+            if (!this.ros.isConnected) {
+                return reject(new Error(`ROS not connected, cannot set param ${name}`));
             }
             const param = new Param({ ros, name });
             param
@@ -950,11 +1016,11 @@ class ParamManager {
     delete(name) {
         return new Promise((resolve, reject) => {
             const ros = this.ros;
-            if (!ros) {
-                throw new Error('ros instance is not initialized');
+            if (!this.ros) {
+                return reject(new Error('ros instance is not initialized'));
             }
-            if (!ros.isConnected) {
-                console.warn(`ROS not connected, cannot delete to ${name}, ${name} in messageQueue when ros reconnected`);
+            if (!this.ros.isConnected) {
+                return reject(new Error(`ROS not connected, cannot delete param ${name}`));
             }
             const param = new Param({ ros, name });
             param

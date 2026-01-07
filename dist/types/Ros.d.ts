@@ -12,7 +12,7 @@ export interface RosLike {
     getNextId(): string;
     readonly isConnected: boolean;
 }
-export default class Ros extends EventEmitter {
+export default class Ros extends EventEmitter implements RosLike {
     private socket;
     private _isConnected;
     private idCounter;

@@ -15,12 +15,11 @@ export interface RosLike {
   readonly isConnected: boolean;
 }
 
-export default class Ros extends EventEmitter {
+export default class Ros extends EventEmitter implements RosLike {
   private socket: WebSocket | null = null;
   private _isConnected = false;
   private idCounter = 0;
   private options: RosOptions;
-  // private reconnectDelay = 1000;
 
   constructor(options: RosOptions = {}) {
     super();
