@@ -318,7 +318,6 @@ class EnhancedRos extends EventEmitter {
             this.socket.onclose = () => {
                 if (generation !== this.connectGeneration)
                     return;
-                console.log('socket close');
                 this.stopHeartbeat();
                 this.socket = null;
                 this.emit('close');

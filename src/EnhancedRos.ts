@@ -58,7 +58,7 @@ export default class EnhancedRos extends EventEmitter implements RosLike {
   /** 当前连接状态 */
   private _state: EnhancedRosState = EnhancedRosState.IDLE;
   /** 当前/最近一次连接地址 */
-  private currentUrl: string | null = null;
+  public currentUrl: string | null = null;
 
   /** 离线消息队列，连接成功后自动发送 */
   private messageQueue: any[] = [];
