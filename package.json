@@ -1,6 +1,6 @@
 {
   "name": "roslib-ts",
-  "version": "1.0.0-beta.2",
+  "version": "1.0.0-beta.3",
   "description": "Stable ROSLIB with EnhancedRos (Beta)",
   "author": "naviai",
   "license": "MIT",
