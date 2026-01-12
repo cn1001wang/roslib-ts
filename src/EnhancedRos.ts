@@ -219,7 +219,6 @@ export default class EnhancedRos extends EventEmitter implements RosLike {
 
       this.socket.onclose = () => {
         if (generation !== this.connectGeneration) return;
-        console.log('socket close')
         this.stopHeartbeat();
         this.socket = null;
         this.emit('close');
