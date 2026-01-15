@@ -1,9 +1,8 @@
-import { default as EnhancedRos, EnhancedRosState } from './EnhancedRos';
-import { default as Topic } from './Topic';
-import { default as Service } from './Service';
-import { default as ServiceRequest, ServiceResponse } from './ServiceRequest';
-import { default as Param } from './Param';
-
+import { default as EnhancedRos, EnhancedRosState } from "./EnhancedRos";
+import { default as Topic } from "./Topic";
+import { default as Service } from "./Service";
+import { default as ServiceRequest, ServiceResponse } from "./ServiceRequest";
+import { default as Param } from "./Param";
 
 type Callback = (msg: any) => void;
 
@@ -20,13 +19,20 @@ export class TopicManager {
   constructor(ros: EnhancedRos) {
     this.ros = ros;
   }
-
-  subscribe(name: string, messageType: string, callback: Callback) {    
-    if(!this.ros){
-      throw new Error('ros instance is not initialized')
+  /**
+   * 订阅指定主题
+   * @param name 主题名称
+   * @param messageType 消息类型
+   * @param callback 回调函数，当收到消息时调用
+   */
+  subscribe(name: string, messageType: string, callback: Callback) {
+    if (!this.ros) {
+      throw new Error("ros instance is not initialized");
     }
     if (!this.ros.isConnected) {
-      console.warn(`ROS not connected, cannot subscribe to ${name}, ${name} in messageQueue when ros reconnected`);
+      console.warn(
+        `ROS not connected, cannot subscribe to ${name}, ${name} in messageQueue when ros reconnected`
+      );
     }
 
     // 已存在，添加回调即可
@@ -83,20 +89,37 @@ export class TopicManager {
       });
     });
   }
-
-  publish(name: string, messageType: string, data: any){
-    if(!this.ros){
-      throw new Error('ros instance is not initialized')
-    }
-    if (!this.ros.isConnected) {
-      console.warn(`ROS not connected, cannot publish to ${name}, ${name} in messageQueue when ros reconnected`);
-    }
-    const chatter = new Topic({
-      ros: this.ros,
-      name,
-      messageType 
-    })
-    chatter.publish({data:data})
+  /**
+   * 发布消息到指定主题
+   * @param name 主题名称
+   * @param messageType 消息类型
+   * @param data 要发布的数据
+   * @param queueWhenOffline 是否在 ROS 连接时队列消息（默认 false）
+   * @returns Promise，成功时解析为 undefined，失败时拒绝
+   */
+  publish(name: string, messageType: string, data: any, queueWhenOffline = false) {
+    return new Promise((resolve, reject) => {
+      if (!this.ros) {
+        reject(new Error("ros instance is not initialized"))
+        return 
+      }
+      if (!this.ros.isConnected) {
+        if (!queueWhenOffline) {
+          reject(new Error(`ROS not connected, cannot publish to ${name}`));
+          return
+        }
+        console.warn(
+          `ROS not connected, cannot publish to ${name}, ${name} in messageQueue when ros reconnected`
+        );
+      }
+      const chatter = new Topic({
+        ros: this.ros,
+        name,
+        messageType,
+      });
+      chatter.publish({ data: data });
+      resolve(undefined);
+    });
   }
 }
 export class ServiceManager {
@@ -110,19 +133,26 @@ export class ServiceManager {
 
   /**
    * 调用服务（每次直接创建 Service 实例，带统一超时）
+   * @param name 服务名称
+   * @param serviceType 服务类型
+   * @param request 服务请求数据（可选）
+   * @param timeout 超时时间（默认 10s）
+   * @returns Promise，成功时解析为服务响应，失败时拒绝
    */
   call(
     name: string,
     serviceType: string,
     request?: any,
-    timeout = this.defaultTimeout,
+    timeout = this.defaultTimeout
   ): Promise<any> {
     return new Promise((resolve, reject) => {
-      if(!this.ros){
-        return reject(new Error('ros instance is not initialized'))
+      if (!this.ros) {
+        return reject(new Error("ros instance is not initialized"));
       }
       if (!this.ros.isConnected) {
-        return reject(new Error(`ROS not connected, cannot call service ${name}`));
+        return reject(
+          new Error(`ROS not connected, cannot call service ${name}`)
+        );
       }
 
       let timer: ReturnType<typeof setTimeout> | null = null;
@@ -156,7 +186,7 @@ export class ServiceManager {
           (error) => {
             cleanup();
             reject(error);
-          },
+          }
         );
       } catch (error) {
         cleanup();
@@ -179,10 +209,10 @@ export class ParamManager {
    */
   get(name: string, timeout: number = this.defaultTimeout): Promise<any> {
     return new Promise((resolve, reject) => {
-      const ros = this.ros
+      const ros = this.ros;
 
-      if(!this.ros){
-        return reject(new Error('ros instance is not initialized'))
+      if (!this.ros) {
+        return reject(new Error("ros instance is not initialized"));
       }
       if (!this.ros.isConnected) {
         return reject(new Error(`ROS not connected, cannot get param ${name}`));
@@ -211,10 +241,10 @@ export class ParamManager {
    */
   set(name: string, value: any): Promise<void> {
     return new Promise((resolve, reject) => {
-      const ros = this.ros
+      const ros = this.ros;
 
-      if(!this.ros){
-        return reject(new Error('ros instance is not initialized'))
+      if (!this.ros) {
+        return reject(new Error("ros instance is not initialized"));
       }
       if (!this.ros.isConnected) {
         return reject(new Error(`ROS not connected, cannot set param ${name}`));
@@ -236,12 +266,14 @@ export class ParamManager {
    */
   delete(name: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const ros = this.ros
-      if(!this.ros){
-        return reject(new Error('ros instance is not initialized'))
+      const ros = this.ros;
+      if (!this.ros) {
+        return reject(new Error("ros instance is not initialized"));
       }
       if (!this.ros.isConnected) {
-        return reject(new Error(`ROS not connected, cannot delete param ${name}`));
+        return reject(
+          new Error(`ROS not connected, cannot delete param ${name}`)
+        );
       }
 
       const param = new Param({ ros, name });
@@ -255,4 +287,3 @@ export class ParamManager {
     });
   }
 }
-
