@@ -1,5 +1,5 @@
-import EventEmitter from './EventEmitter';
-import { RosLike } from './Ros';
+import EventEmitter from "./EventEmitter";
+import { RosLike } from "./Ros";
 interface TopicOptions {
     ros: RosLike;
     name: string;
@@ -21,6 +21,7 @@ export default class Topic extends EventEmitter {
     readonly queue_length?: number;
     private isSubscribed;
     private isAdvertised;
+    private advertiseId?;
     /** 存储绑定的重连处理器，便于精准卸载 */
     private _reconnectHandler;
     constructor(options: TopicOptions);

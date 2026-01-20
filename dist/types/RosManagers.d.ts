@@ -2,6 +2,7 @@ import { default as EnhancedRos } from "./EnhancedRos";
 type Callback = (msg: any) => void;
 export declare class TopicManager {
     private topics;
+    private pubTopics;
     private ros;
     constructor(ros: EnhancedRos);
     /**
@@ -23,6 +24,8 @@ export declare class TopicManager {
      * @returns Promise，成功时解析为 undefined，失败时拒绝
      */
     publish(name: string, messageType: string, data: any, queueWhenOffline?: boolean): Promise<unknown>;
+    unadvertise(name: string): void;
+    unadvertiseAll(): void;
 }
 export declare class ServiceManager {
     private ros;

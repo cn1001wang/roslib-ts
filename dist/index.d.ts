@@ -183,6 +183,7 @@ declare class Topic extends EventEmitter {
     readonly queue_length?: number;
     private isSubscribed;
     private isAdvertised;
+    private advertiseId?;
     /** 存储绑定的重连处理器，便于精准卸载 */
     private _reconnectHandler;
     constructor(options: TopicOptions);
@@ -267,6 +268,7 @@ declare class Param {
 type Callback = (msg: any) => void;
 declare class TopicManager {
     private topics;
+    private pubTopics;
     private ros;
     constructor(ros: EnhancedRos);
     /**
@@ -288,6 +290,8 @@ declare class TopicManager {
      * @returns Promise，成功时解析为 undefined，失败时拒绝
      */
     publish(name: string, messageType: string, data: any, queueWhenOffline?: boolean): Promise<unknown>;
+    unadvertise(name: string): void;
+    unadvertiseAll(): void;
 }
 declare class ServiceManager {
     private ros;

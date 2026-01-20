@@ -14,6 +14,7 @@ interface ManagedTopic {
 
 export class TopicManager {
   private topics: Map<string, ManagedTopic> = new Map();
+  private pubTopics: Map<string,  Omit<ManagedTopic, "callbacks">> = new Map();
   private ros: EnhancedRos;
 
   constructor(ros: EnhancedRos) {
@@ -31,7 +32,7 @@ export class TopicManager {
     }
     if (!this.ros.isConnected) {
       console.warn(
-        `ROS not connected, cannot subscribe to ${name}, ${name} in messageQueue when ros reconnected`
+        `ROS not connected, cannot subscribe to ${name}, ${name} in messageQueue when ros reconnected`,
       );
     }
 
@@ -97,29 +98,59 @@ export class TopicManager {
    * @param queueWhenOffline 是否在 ROS 连接时队列消息（默认 false）
    * @returns Promise，成功时解析为 undefined，失败时拒绝
    */
-  publish(name: string, messageType: string, data: any, queueWhenOffline = false) {
+  publish(
+    name: string,
+    messageType: string,
+    data: any,
+    queueWhenOffline = false,
+  ) {
     return new Promise((resolve, reject) => {
       if (!this.ros) {
-        reject(new Error("ros instance is not initialized"))
-        return 
+        reject(new Error("ros instance is not initialized"));
+        return;
       }
       if (!this.ros.isConnected) {
         if (!queueWhenOffline) {
           reject(new Error(`ROS not connected, cannot publish to ${name}`));
-          return
+          return;
         }
         console.warn(
-          `ROS not connected, cannot publish to ${name}, ${name} in messageQueue when ros reconnected`
+          `ROS not connected, cannot publish to ${name}, ${name} in messageQueue when ros reconnected`,
         );
+      }
+      // 已存在，添加回调即可
+      if (this.pubTopics.has(name)) {
+        const managed = this.pubTopics.get(name)!;
+        managed.topic.publish(data);
+        resolve(undefined);
+        return;
       }
       const chatter = new Topic({
         ros: this.ros,
         name,
         messageType,
       });
-      chatter.publish({ data: data });
+      this.pubTopics.set(name, {
+        topic: chatter,
+        messageType,
+      });
+      chatter.publish(data);
       resolve(undefined);
     });
+  }
+
+  unadvertise(name: string) {
+    const managed = this.pubTopics.get(name);
+    if (!managed) return;
+    managed.topic.unadvertise();
+    this.pubTopics.delete(name);
+  }
+
+  unadvertiseAll() {
+    this.pubTopics.forEach((managed) => {
+      managed.topic.unadvertise();
+    });
+    this.pubTopics.clear();
   }
 }
 export class ServiceManager {
@@ -143,7 +174,7 @@ export class ServiceManager {
     name: string,
     serviceType: string,
     request?: any,
-    timeout = this.defaultTimeout
+    timeout = this.defaultTimeout,
   ): Promise<any> {
     return new Promise((resolve, reject) => {
       if (!this.ros) {
@@ -151,7 +182,7 @@ export class ServiceManager {
       }
       if (!this.ros.isConnected) {
         return reject(
-          new Error(`ROS not connected, cannot call service ${name}`)
+          new Error(`ROS not connected, cannot call service ${name}`),
         );
       }
 
@@ -186,7 +217,7 @@ export class ServiceManager {
           (error) => {
             cleanup();
             reject(error);
-          }
+          },
         );
       } catch (error) {
         cleanup();
@@ -272,7 +303,7 @@ export class ParamManager {
       }
       if (!this.ros.isConnected) {
         return reject(
-          new Error(`ROS not connected, cannot delete param ${name}`)
+          new Error(`ROS not connected, cannot delete param ${name}`),
         );
       }
 

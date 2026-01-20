@@ -1,5 +1,5 @@
-import EventEmitter from './EventEmitter';
-import { RosLike } from './Ros';
+import EventEmitter from "./EventEmitter";
+import { RosLike } from "./Ros";
 
 interface TopicOptions {
   ros: RosLike;
@@ -28,7 +28,8 @@ export default class Topic extends EventEmitter {
   public readonly queue_length?: number;
   private isSubscribed = false;
   private isAdvertised = false;
-/** 存储绑定的重连处理器，便于精准卸载 */
+  private advertiseId?: string;
+  /** 存储绑定的重连处理器，便于精准卸载 */
   private _reconnectHandler: () => void;
 
   constructor(options: TopicOptions) {
@@ -58,7 +59,8 @@ export default class Topic extends EventEmitter {
   private _sendSubscribe(): void {
     this.isSubscribed = true;
     const subscribeMessage = {
-      op: 'subscribe',
+      op: "subscribe",
+      id: "subscribe:" + this.name + ":" + this.ros.getNextId(),
       topic: this.name,
       type: this.messageType,
       ...(this.compression && { compression: this.compression }),
@@ -71,8 +73,10 @@ export default class Topic extends EventEmitter {
   /** 发送底层的公告协议包 */
   private _sendAdvertise(): void {
     this.isAdvertised = true;
+    this.advertiseId = "advertise:" + this.name + ":" + this.ros.getNextId();
     const advertiseMessage = {
-      op: 'advertise',
+      op: "advertise",
+      id: this.advertiseId,
       topic: this.name,
       type: this.messageType,
       ...(this.latch && { latch: this.latch }),
@@ -89,19 +93,19 @@ export default class Topic extends EventEmitter {
     if (this.isSubscribed) return;
 
     // 1. 先尝试移除已有的监听，防止重复挂载
-    this.ros.off('connection', this._reconnectHandler);
-    this.ros.off('close', this._handleClose);
+    this.ros.off("connection", this._reconnectHandler);
+    this.ros.off("close", this._handleClose);
 
     // 2. 挂载监听
-    this.ros.on('connection', this._reconnectHandler);
-    this.ros.on('close', this._handleClose);
+    this.ros.on("connection", this._reconnectHandler);
+    this.ros.on("close", this._handleClose);
 
     // 3. 执行物理订阅
     this._sendSubscribe();
 
     // 4. 监听来自 ROS 的消息分发
     this.ros.on(this.name, (message: any) => {
-      this.emit('message', message);
+      this.emit("message", message);
       if (callback) callback(message);
     });
   }
@@ -111,7 +115,7 @@ export default class Topic extends EventEmitter {
     if (!this.isSubscribed) return;
 
     const unsubscribeMessage = {
-      op: 'unsubscribe',
+      op: "unsubscribe",
       topic: this.name,
     };
 
@@ -121,9 +125,9 @@ export default class Topic extends EventEmitter {
     // 彻底清理：移除重连监听和消息监听
 
     this.ros.off(this.name);
-    if(!this.isAdvertised){
-      this.ros.off('connection', this._reconnectHandler);
-      this.ros.off('close', this._handleClose);
+    if (!this.isAdvertised) {
+      this.ros.off("connection", this._reconnectHandler);
+      this.ros.off("close", this._handleClose);
     }
   }
 
@@ -131,9 +135,9 @@ export default class Topic extends EventEmitter {
   advertise(): void {
     if (this.isAdvertised) return;
 
-    this.ros.off('connection', this._reconnectHandler);
-    this.ros.on('connection', this._reconnectHandler);
-    this.ros.on('close', this._handleClose);
+    this.ros.off("connection", this._reconnectHandler);
+    this.ros.on("connection", this._reconnectHandler);
+    this.ros.on("close", this._handleClose);
 
     this._sendAdvertise();
   }
@@ -143,7 +147,8 @@ export default class Topic extends EventEmitter {
     if (!this.isAdvertised) return;
 
     const unadvertiseMessage = {
-      op: 'unadvertise',
+      op: "unadvertise",
+      id: this.advertiseId!,
       topic: this.name,
     };
 
@@ -152,8 +157,8 @@ export default class Topic extends EventEmitter {
 
     // 如果当前也没有订阅，则可以安全移除重连处理器
     if (!this.isSubscribed) {
-      this.ros.off('connection', this._reconnectHandler);
-      this.ros.off('close', this._handleClose);
+      this.ros.off("connection", this._reconnectHandler);
+      this.ros.off("close", this._handleClose);
     }
   }
 
@@ -164,9 +169,11 @@ export default class Topic extends EventEmitter {
     }
 
     const publishMessage = {
-      op: 'publish',
+      op: "publish",
+      id: "publish:" + this.name + ":" + this.ros.getNextId(),
       topic: this.name,
       msg: message,
+      latch: this.latch,
     };
 
     this.ros.callOnConnection(publishMessage);
