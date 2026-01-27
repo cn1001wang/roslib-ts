@@ -846,8 +846,9 @@ class TopicManager {
      * @param name 主题名称
      * @param messageType 消息类型
      * @param callback 回调函数，当收到消息时调用
+     * @param config 订阅配置选项（可选）
      */
-    subscribe(name, messageType, callback) {
+    subscribe(name, messageType, callback, config) {
         if (!this.ros) {
             throw new Error("ros instance is not initialized");
         }
@@ -861,13 +862,13 @@ class TopicManager {
             return;
         }
         // 创建新 topic
-        const topic = new Topic({ ros: this.ros, name, messageType });
+        const topic = new Topic(Object.assign({ ros: this.ros, name, messageType }, config));
         const callbacks = new Set();
         callbacks.add(callback);
         topic.subscribe((msg) => {
             callbacks.forEach((cb) => cb(msg));
         });
-        this.topics.set(name, { topic, callbacks, messageType });
+        this.topics.set(name, { topic, callbacks, messageType, config });
     }
     unsubscribe(name, callback) {
         const managed = this.topics.get(name);
@@ -895,7 +896,7 @@ class TopicManager {
     }
     resubscribeAll(ros) {
         this.topics.forEach((managed, name) => {
-            const topic = new Topic({ ros, name, messageType: managed.messageType });
+            const topic = new Topic(Object.assign({ ros, name, messageType: managed.messageType }, managed.config));
             managed.topic = topic;
             topic.subscribe((msg) => {
                 managed.callbacks.forEach((cb) => cb(msg));
@@ -907,10 +908,11 @@ class TopicManager {
      * @param name 主题名称
      * @param messageType 消息类型
      * @param data 要发布的数据
+     * @param config 发布配置选项（可选）
      * @param queueWhenOffline 是否在 ROS 连接时队列消息（默认 false）
      * @returns Promise，成功时解析为 undefined，失败时拒绝
      */
-    publish(name, messageType, data, queueWhenOffline = false) {
+    publish(name, messageType, data, config, queueWhenOffline = false) {
         return new Promise((resolve, reject) => {
             if (!this.ros) {
                 reject(new Error("ros instance is not initialized"));
@@ -930,11 +932,8 @@ class TopicManager {
                 resolve(undefined);
                 return;
             }
-            const chatter = new Topic({
-                ros: this.ros,
-                name,
-                messageType,
-            });
+            const chatter = new Topic(Object.assign({ ros: this.ros, name,
+                messageType }, config));
             this.pubTopics.set(name, {
                 topic: chatter,
                 messageType,

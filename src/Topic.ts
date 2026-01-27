@@ -1,7 +1,7 @@
 import EventEmitter from "./EventEmitter";
 import { RosLike } from "./Ros";
 
-interface TopicOptions {
+export interface TopicOptions {
   ros: RosLike;
   name: string;
   messageType: string;

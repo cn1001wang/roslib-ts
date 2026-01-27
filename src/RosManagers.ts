@@ -1,14 +1,16 @@
-import { default as EnhancedRos, EnhancedRosState } from "./EnhancedRos";
+import { default as EnhancedRos } from "./EnhancedRos";
 import { default as Topic } from "./Topic";
 import { default as Service } from "./Service";
-import { default as ServiceRequest, ServiceResponse } from "./ServiceRequest";
+import { default as ServiceRequest } from "./ServiceRequest";
 import { default as Param } from "./Param";
+import { TopicOptions } from "./Topic";
 
 type Callback = (msg: any) => void;
-
+ type TopicConfigOptions = Omit<TopicOptions, 'ros' | 'name' | 'messageType'>;
 interface ManagedTopic {
   topic: Topic;
   messageType: string;
+  config?: TopicConfigOptions;
   callbacks: Set<Callback>;
 }
 
@@ -25,8 +27,9 @@ export class TopicManager {
    * @param name 主题名称
    * @param messageType 消息类型
    * @param callback 回调函数，当收到消息时调用
+   * @param config 订阅配置选项（可选）
    */
-  subscribe(name: string, messageType: string, callback: Callback) {
+  subscribe(name: string, messageType: string, callback: Callback, config?: TopicConfigOptions) {
     if (!this.ros) {
       throw new Error("ros instance is not initialized");
     }
@@ -44,7 +47,7 @@ export class TopicManager {
     }
 
     // 创建新 topic
-    const topic = new Topic({ ros: this.ros, name, messageType });
+    const topic = new Topic({ ros: this.ros, name, messageType, ...config });
     const callbacks = new Set<Callback>();
     callbacks.add(callback);
 
@@ -52,7 +55,7 @@ export class TopicManager {
       callbacks.forEach((cb) => cb(msg));
     });
 
-    this.topics.set(name, { topic, callbacks, messageType });
+    this.topics.set(name, { topic, callbacks, messageType, config });
   }
 
   unsubscribe(name: string, callback?: Callback) {
@@ -82,7 +85,7 @@ export class TopicManager {
 
   resubscribeAll(ros: any) {
     this.topics.forEach((managed, name) => {
-      const topic = new Topic({ ros, name, messageType: managed.messageType });
+      const topic = new Topic({ ros, name, messageType: managed.messageType, ...managed.config });
       managed.topic = topic;
 
       topic.subscribe((msg) => {
@@ -95,6 +98,7 @@ export class TopicManager {
    * @param name 主题名称
    * @param messageType 消息类型
    * @param data 要发布的数据
+   * @param config 发布配置选项（可选）
    * @param queueWhenOffline 是否在 ROS 连接时队列消息（默认 false）
    * @returns Promise，成功时解析为 undefined，失败时拒绝
    */
@@ -102,6 +106,7 @@ export class TopicManager {
     name: string,
     messageType: string,
     data: any,
+    config?: TopicConfigOptions,
     queueWhenOffline = false,
   ) {
     return new Promise((resolve, reject) => {
@@ -129,6 +134,7 @@ export class TopicManager {
         ros: this.ros,
         name,
         messageType,
+        ...config,
       });
       this.pubTopics.set(name, {
         topic: chatter,

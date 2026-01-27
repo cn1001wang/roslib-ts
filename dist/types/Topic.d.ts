@@ -1,6 +1,6 @@
 import EventEmitter from "./EventEmitter";
 import { RosLike } from "./Ros";
-interface TopicOptions {
+export interface TopicOptions {
     ros: RosLike;
     name: string;
     messageType: string;
@@ -45,5 +45,4 @@ export default class Topic extends EventEmitter {
     /** 内部状态处理：连接关闭时重置标志位 */
     private _handleClose;
 }
-export {};
 //# sourceMappingURL=Topic.d.ts.map

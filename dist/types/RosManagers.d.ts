@@ -1,5 +1,7 @@
 import { default as EnhancedRos } from "./EnhancedRos";
+import { TopicOptions } from "./Topic";
 type Callback = (msg: any) => void;
+type TopicConfigOptions = Omit<TopicOptions, 'ros' | 'name' | 'messageType'>;
 export declare class TopicManager {
     private topics;
     private pubTopics;
@@ -10,8 +12,9 @@ export declare class TopicManager {
      * @param name 主题名称
      * @param messageType 消息类型
      * @param callback 回调函数，当收到消息时调用
+     * @param config 订阅配置选项（可选）
      */
-    subscribe(name: string, messageType: string, callback: Callback): void;
+    subscribe(name: string, messageType: string, callback: Callback, config?: TopicConfigOptions): void;
     unsubscribe(name: string, callback?: Callback): void;
     clearAll(): void;
     resubscribeAll(ros: any): void;
@@ -20,10 +23,11 @@ export declare class TopicManager {
      * @param name 主题名称
      * @param messageType 消息类型
      * @param data 要发布的数据
+     * @param config 发布配置选项（可选）
      * @param queueWhenOffline 是否在 ROS 连接时队列消息（默认 false）
      * @returns Promise，成功时解析为 undefined，失败时拒绝
      */
-    publish(name: string, messageType: string, data: any, queueWhenOffline?: boolean): Promise<unknown>;
+    publish(name: string, messageType: string, data: any, config?: TopicConfigOptions, queueWhenOffline?: boolean): Promise<unknown>;
     unadvertise(name: string): void;
     unadvertiseAll(): void;
 }
