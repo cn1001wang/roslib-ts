@@ -1,4 +1,5 @@
 import EventEmitter from './EventEmitter';
+import decompressPng from './util/decompressPng';
 
 interface RosOptions {
   url?: string;
@@ -62,7 +63,8 @@ export default class Ros extends EventEmitter implements RosLike {
       };
 
       this.socket.onmessage = (event) => {
-        this.handleMessage(event.data);
+        var message = JSON.parse(typeof event === 'string' ? event : event.data);
+        this.handlePng(message);
       };
 
     } catch (error) {
@@ -78,10 +80,8 @@ export default class Ros extends EventEmitter implements RosLike {
     this._isConnected = false;
   }
 
-  private handleMessage(data: string): void {
-    try {
-      const message = JSON.parse(data);
-      
+  private handleMessage(message: any): void {
+    try {      
       if (message.op === 'publish') {
         // 发布消息到对应的 topic
         this.emit(message.topic, message.msg);
@@ -98,6 +98,14 @@ export default class Ros extends EventEmitter implements RosLike {
       }
     } catch (error) {
       console.error('Error parsing message:', error);
+    }
+  }
+  
+  private handlePng(message: any) {
+    if (message.op === 'png') {
+      this.handleMessage(decompressPng(message.data));
+    } else {
+      this.handleMessage(message);
     }
   }
 

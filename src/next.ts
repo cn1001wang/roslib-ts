@@ -5,5 +5,7 @@ export { default as Topic } from './Topic';
 export { default as Service } from './Service';
 export { default as ServiceRequest, ServiceResponse } from './ServiceRequest';
 export { default as Param } from './Param';
+export { default as ActionClient } from './ActionClient';
+export { default as Goal } from './Goal';
 export { default as EventEmitter } from './EventEmitter';
 export { TopicManager, ServiceManager, ParamManager } from './RosManagers';

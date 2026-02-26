@@ -22,6 +22,7 @@ export default class Ros extends EventEmitter implements RosLike {
     connect(url: string): void;
     close(): void;
     private handleMessage;
+    private handlePng;
     callOnConnection(message: any): void;
     getNextId(): string;
 }

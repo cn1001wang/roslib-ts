@@ -31,6 +31,7 @@ declare class Ros extends EventEmitter implements RosLike {
     connect(url: string): void;
     close(): void;
     private handleMessage;
+    private handlePng;
     callOnConnection(message: any): void;
     getNextId(): string;
 }
@@ -160,6 +161,7 @@ declare class EnhancedRos extends EventEmitter implements RosLike {
     cast(message: any): void;
     /** 解析并分发服务端消息 */
     private handleMessage;
+    private handlePng;
 }
 
 interface TopicOptions {
@@ -265,6 +267,68 @@ declare class Param {
     delete(callback?: () => void): Promise<void>;
 }
 
+interface ActionClientOptions {
+    ros: RosLike;
+    serverName: string;
+    actionName: string;
+    timeout?: number;
+    omitFeedback?: boolean;
+    omitStatus?: boolean;
+    omitResult?: boolean;
+}
+declare class ActionClient extends EventEmitter {
+    ros: RosLike;
+    serverName: string;
+    actionName: string;
+    timeout?: number;
+    omitFeedback?: boolean;
+    omitStatus?: boolean;
+    omitResult?: boolean;
+    goals: {
+        [key: string]: EventEmitter;
+    };
+    feedbackListener: Topic;
+    statusListener: Topic;
+    resultListener: Topic;
+    goalTopic: Topic;
+    cancelTopic: Topic;
+    private receivedStatus;
+    constructor(options: ActionClientOptions);
+    /**
+     * Cancel all goals associated with this ActionClient.
+     */
+    cancel(): void;
+    /**
+     * Unsubscribe and unadvertise all topics associated with this ActionClient.
+     */
+    dispose(): void;
+}
+
+interface GoalOptions {
+    actionClient: ActionClient;
+    goalMessage: any;
+}
+declare class Goal extends EventEmitter {
+    actionClient: ActionClient;
+    goalMessage: any;
+    isFinished: boolean;
+    goalID: string;
+    status: any;
+    result: any;
+    feedback: any;
+    constructor(options: GoalOptions);
+    /**
+     * Send the goal to the action server.
+     *
+     * @param timeout - A timeout length for the goal's result.
+     */
+    send(timeout?: number): void;
+    /**
+     * Cancel the current goal.
+     */
+    cancel(): void;
+}
+
 type Callback = (msg: any) => void;
 type TopicConfigOptions = Omit<TopicOptions, 'ros' | 'name' | 'messageType'>;
 declare class TopicManager {
@@ -328,4 +392,4 @@ declare class ParamManager {
     delete(name: string): Promise<void>;
 }
 
-export { EnhancedRos, EnhancedRosState, EventEmitter, Param, ParamManager, Ros, Service, ServiceManager, ServiceRequest, ServiceResponse, Topic, TopicManager };
+export { ActionClient, EnhancedRos, EnhancedRosState, EventEmitter, Goal, Param, ParamManager, Ros, Service, ServiceManager, ServiceRequest, ServiceResponse, Topic, TopicManager };

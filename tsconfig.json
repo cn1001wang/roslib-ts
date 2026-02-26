@@ -2,9 +2,14 @@
   "compilerOptions": {
     "target": "ES2017",
     "module": "ESNext",
+    "lib": [
+      "es2022",
+      "DOM",
+      "DOM.Iterable"
+    ] /* Specify library files to be included in the compilation. */,
     "strict": true,
     "esModuleInterop": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "importHelpers": true,
     "declaration": true,
     "declarationMap": true,

@@ -6,6 +6,7 @@ import EventEmitter from './EventEmitter';
  * ROS 接口定义，保证与原生 roslib 兼容
  */
 import type { RosLike } from './Ros';
+import decompressPng from './util/decompressPng';
 
 /**
  * 连接状态枚举
@@ -244,7 +245,8 @@ export default class EnhancedRos extends EventEmitter implements RosLike {
 
       this.socket.onmessage = (event) => {
         this.lastServerMessageAtMs = Date.now();
-        this.handleMessage(event.data);
+        var message = JSON.parse(typeof event === 'string' ? event : event.data);
+        this.handlePng(message);
       };
     } catch (error) {
       this.emit('error', error);
@@ -373,10 +375,8 @@ export default class EnhancedRos extends EventEmitter implements RosLike {
   }
 
   /** 解析并分发服务端消息 */
-  private handleMessage(data: string): void {
+  private handleMessage(message: any): void {
     try {
-      const message = JSON.parse(data);
-
       if (message.op === 'publish') {
         // 普通话题消息
         this.emit(message.topic, message.msg);
@@ -396,6 +396,13 @@ export default class EnhancedRos extends EventEmitter implements RosLike {
       }
     } catch (error) {
       console.error('Error parsing message:', error);
+    }
+  }
+  private handlePng(message: any) {
+    if (message.op === 'png') {
+      this.handleMessage(decompressPng(message.data));
+    } else {
+      this.handleMessage(message);
     }
   }
 }

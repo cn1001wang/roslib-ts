@@ -127,5 +127,6 @@ export default class EnhancedRos extends EventEmitter implements RosLike {
     cast(message: any): void;
     /** 解析并分发服务端消息 */
     private handleMessage;
+    private handlePng;
 }
 //# sourceMappingURL=EnhancedRos.d.ts.map

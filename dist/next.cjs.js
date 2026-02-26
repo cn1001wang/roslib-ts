@@ -4,7 +4,9 @@ var index = require('./index.cjs.js');
 
 
 
+exports.ActionClient = index.ActionClient;
 exports.EventEmitter = index.EventEmitter;
+exports.Goal = index.Goal;
 exports.Param = index.Param;
 exports.ParamManager = index.ParamManager;
 exports.Ros = index.EnhancedRos;

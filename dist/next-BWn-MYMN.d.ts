@@ -1,0 +1,332 @@
+declare class EventEmitter {
+    private events;
+    on(event: string, listener: Function): this;
+    once(event: string, listener: Function): this;
+    off(event: string, listener?: Function): this;
+    emit(event: string, ...args: any[]): boolean;
+    removeAllListeners(event?: string): this;
+    listenerCount(event: string): number;
+}
+
+interface RosOptions {
+    url?: string;
+    WebSocket?: typeof WebSocket;
+}
+interface RosLike {
+    on(event: string, listener: Function): this;
+    once(event: string, listener: Function): this;
+    off(event: string, listener?: Function): this;
+    emit(event: string, ...args: any[]): boolean;
+    callOnConnection(message: any): void;
+    getNextId(): string;
+    readonly isConnected: boolean;
+}
+declare class Ros extends EventEmitter implements RosLike {
+    private socket;
+    private _isConnected;
+    private idCounter;
+    private options;
+    constructor(options?: RosOptions);
+    get isConnected(): boolean;
+    connect(url: string): void;
+    close(): void;
+    private handleMessage;
+    callOnConnection(message: any): void;
+    getNextId(): string;
+}
+
+/**
+ * 事件发射器，用于内部实现
+ */
+
+/**
+ * 连接状态枚举
+ */
+declare enum EnhancedRosState {
+    /** 空闲/初始状态 */
+    IDLE = "IDLE",
+    /** 正在连接 */
+    CONNECTING = "CONNECTING",
+    /** 已连接 */
+    CONNECTED = "CONNECTED",
+    /** 正在重连 */
+    RECONNECTING = "RECONNECTING",
+    /** 已手动关闭 */
+    CLOSED = "CLOSED",
+    /** 发生错误 */
+    ERROR = "ERROR"
+}
+/**
+ * 构造参数
+ */
+interface EnhancedRosOptions {
+    /** 默认连接地址 */
+    url?: string;
+    /** 自定义 WebSocket 实现（用于测试或特殊环境） */
+    WebSocket?: typeof WebSocket;
+    /** 首次重连延迟（毫秒） */
+    reconnect_min_delay?: number;
+    /** 最大重连延迟（毫秒） */
+    reconnect_max_delay?: number;
+    /** 心跳间隔（毫秒，≤0 则关闭心跳） */
+    heartbeat_interval_ms?: number;
+    /** 心跳函数（默认发送 ping 消息） */
+    heartbeat_fn?: () => void;
+}
+/**
+ * 增强版 ROS 连接封装
+ * 支持自动重连、心跳保活、消息队列、状态管理
+ */
+declare class EnhancedRos extends EventEmitter implements RosLike {
+    /** WebSocket 实例 */
+    private socket;
+    /** 自增 ID 计数器，用于请求-响应匹配 */
+    private idCounter;
+    /** 用户配置副本 */
+    private options;
+    /** 当前连接状态 */
+    private _state;
+    /** 当前/最近一次连接地址 */
+    currentUrl: string | null;
+    /** 离线消息队列，连接成功后自动发送 */
+    private messageQueue;
+    /** 重连定时器句柄 */
+    private reconnectTimer;
+    /** 本次重连等待时长（动态退避） */
+    private reconnectDelayMs;
+    /** 最小重连延迟（配置值,默认1s） */
+    private readonly reconnectMinDelayMs;
+    /** 最大重连延迟（配置值,默认30s） */
+    private readonly reconnectMaxDelayMs;
+    /** 心跳定时器句柄 */
+    private heartbeatTimer;
+    /** 心跳间隔（配置值,默认0s不启用） */
+    private readonly heartbeatIntervalMs;
+    /** 心跳函数（默认发送 ping 消息） */
+    private readonly heartbeatFn?;
+    /** 最近一次收到服务端消息的时间戳 */
+    private lastServerMessageAtMs;
+    /** 标记是否为用户主动关闭（影响重连策略） */
+    private manualClose;
+    /** 连接代际，用于丢弃过期的重连任务 */
+    private connectGeneration;
+    /**
+     * 构造函数
+     * @param options 配置项
+     */
+    constructor(options?: EnhancedRosOptions);
+    /** 获取当前状态 */
+    get state(): EnhancedRosState;
+    /** 是否已连接 */
+    get isConnected(): boolean;
+    /**
+     * 建立连接（如已连接相同地址则忽略）
+     * @param url WebSocket 地址，例如 ws://localhost:9090
+     */
+    connect(url: string): void;
+    /**
+     * 手动关闭连接（不会触发自动重连）
+     */
+    close(): void;
+    /**
+     * 发送消息（离线时自动入队）
+     * @param message 任意 JSON 兼容对象
+     */
+    callOnConnection(message: any): void;
+    /**
+     * 获取下一个自增 ID（字符串形式）
+     */
+    getNextId(): string;
+    /** 状态变更并对外广播 */
+    private setState;
+    /** 连接前清理资源 */
+    private cleanupForConnect;
+    /** 清除重连定时器 */
+    private clearReconnectTimer;
+    /** 创建并绑定 WebSocket 事件 */
+    private openSocket;
+    /** 安全关闭 WebSocket */
+    private closeSocket;
+    /** 调度下一次重连（退避策略，达到最大后固定） */
+    private scheduleReconnect;
+    /** 启动心跳定时器 */
+    private startHeartbeat;
+    /** 停止心跳定时器 */
+    private stopHeartbeat;
+    /** 将离线队列全部发出 */
+    private flushQueue;
+    /** 真正发送 JSON 字符串 */
+    private send;
+    cast(message: any): void;
+    /** 解析并分发服务端消息 */
+    private handleMessage;
+}
+
+interface TopicOptions {
+    ros: RosLike;
+    name: string;
+    messageType: string;
+    compression?: string;
+    throttle_rate?: number;
+    queue_size?: number;
+    latch?: boolean;
+    queue_length?: number;
+}
+declare class Topic extends EventEmitter {
+    readonly ros: RosLike;
+    readonly name: string;
+    readonly messageType: string;
+    readonly compression?: string;
+    readonly throttle_rate?: number;
+    readonly queue_size?: number;
+    readonly latch?: boolean;
+    readonly queue_length?: number;
+    private isSubscribed;
+    private isAdvertised;
+    private advertiseId?;
+    /** 存储绑定的重连处理器，便于精准卸载 */
+    private _reconnectHandler;
+    constructor(options: TopicOptions);
+    /** 发送底层的订阅协议包 */
+    private _sendSubscribe;
+    /** 发送底层的公告协议包 */
+    private _sendAdvertise;
+    /**
+     * 订阅话题
+     * @param callback 接收消息的回调函数
+     */
+    subscribe(callback?: (message: any) => void): void;
+    /** 取消订阅 */
+    unsubscribe(): void;
+    /** 公告话题（作为发布者） */
+    advertise(): void;
+    /** 取消公告 */
+    unadvertise(): void;
+    /** 发布消息 */
+    publish(message: any): void;
+    /** 内部状态处理：连接关闭时重置标志位 */
+    private _handleClose;
+}
+
+declare class ServiceRequest {
+    [key: string]: any;
+    constructor(values?: {
+        [key: string]: any;
+    });
+}
+declare class ServiceResponse {
+    [key: string]: any;
+    constructor(values?: {
+        [key: string]: any;
+    });
+}
+
+interface ServiceOptions {
+    ros: RosLike;
+    name: string;
+    serviceType: string;
+}
+declare class Service extends EventEmitter {
+    private ros;
+    private name;
+    private serviceType;
+    private isAdvertised;
+    /** 存储绑定的重连处理器 */
+    private _reconnectHandler;
+    /** 存储服务请求处理函数，便于卸载 */
+    private _currentServiceCallback;
+    constructor(options: ServiceOptions);
+    callService(request: ServiceRequest, callback?: (response: ServiceResponse) => void, failedCallback?: (error: any) => void): Promise<ServiceResponse>;
+    /** 发送底层的服务公告协议 */
+    private _sendAdvertise;
+    /**
+     * 公告服务（服务端模式）
+     * @param callback 处理请求并返回结果的回调
+     */
+    advertise(callback: (request: ServiceRequest, response: ServiceResponse) => any): void;
+    /**
+     * 取消服务公告
+     */
+    unadvertise(): void;
+    /** 内部状态处理：连接关闭时重置标志位 */
+    private _handleClose;
+}
+
+interface ParamOptions {
+    ros: RosLike;
+    name: string;
+}
+declare class Param {
+    private ros;
+    private name;
+    constructor(options: ParamOptions);
+    get(callback?: (value: any) => void): Promise<any>;
+    set(value: any, callback?: () => void): Promise<void>;
+    delete(callback?: () => void): Promise<void>;
+}
+
+type Callback = (msg: any) => void;
+type TopicConfigOptions = Omit<TopicOptions, 'ros' | 'name' | 'messageType'>;
+declare class TopicManager {
+    private topics;
+    private pubTopics;
+    private ros;
+    constructor(ros: EnhancedRos);
+    /**
+     * 订阅指定主题
+     * @param name 主题名称
+     * @param messageType 消息类型
+     * @param callback 回调函数，当收到消息时调用
+     * @param config 订阅配置选项（可选）
+     */
+    subscribe(name: string, messageType: string, callback: Callback, config?: TopicConfigOptions): void;
+    unsubscribe(name: string, callback?: Callback): void;
+    clearAll(): void;
+    resubscribeAll(ros: any): void;
+    /**
+     * 发布消息到指定主题
+     * @param name 主题名称
+     * @param messageType 消息类型
+     * @param data 要发布的数据
+     * @param config 发布配置选项（可选）
+     * @param queueWhenOffline 是否在 ROS 连接时队列消息（默认 false）
+     * @returns Promise，成功时解析为 undefined，失败时拒绝
+     */
+    publish(name: string, messageType: string, data: any, config?: TopicConfigOptions, queueWhenOffline?: boolean): Promise<unknown>;
+    unadvertise(name: string): void;
+    unadvertiseAll(): void;
+}
+declare class ServiceManager {
+    private ros;
+    private readonly defaultTimeout;
+    constructor(ros: EnhancedRos, timeout?: number);
+    /**
+     * 调用服务（每次直接创建 Service 实例，带统一超时）
+     * @param name 服务名称
+     * @param serviceType 服务类型
+     * @param request 服务请求数据（可选）
+     * @param timeout 超时时间（默认 10s）
+     * @returns Promise，成功时解析为服务响应，失败时拒绝
+     */
+    call(name: string, serviceType: string, request?: any, timeout?: number): Promise<any>;
+}
+declare class ParamManager {
+    private ros;
+    private readonly defaultTimeout;
+    constructor(ros: EnhancedRos, timeout?: number);
+    /**
+     * 获取参数值
+     */
+    get(name: string, timeout?: number): Promise<any>;
+    /**
+     * 设置参数值
+     */
+    set(name: string, value: any): Promise<void>;
+    /**
+     * 删除参数
+     */
+    delete(name: string): Promise<void>;
+}
+
+export { EventEmitter as E, Param as P, Service as S, Topic as T, Ros as a, EnhancedRos as b, EnhancedRosState as c, ServiceRequest as d, ServiceResponse as e, TopicManager as f, ServiceManager as g, ParamManager as h };
+export type { RosLike as R };
