@@ -317,7 +317,7 @@ export default class EnhancedRos extends EventEmitter implements RosLike {
         this.setState(EnhancedRosState.RECONNECTING);
         try {
           this.closeSocket();
-        } catch {}
+        } catch { }
         // if (!this.reconnectTimer) {
         //   this.scheduleReconnect();
         // }
@@ -325,11 +325,11 @@ export default class EnhancedRos extends EventEmitter implements RosLike {
       }
 
       // 发送 ping 保活
-      if(this.heartbeatFn) {
+      if (this.heartbeatFn) {
         this.heartbeatFn();
       } else {
         /// 默认心跳：调用 /rosapi/get_time 服务
-        this.cast({op: "call_service", id: this.getNextId(), service: "/rosapi/get_time", type: "rosapi/GetTime", args: {}});
+        this.cast({ op: "call_service", id: this.getNextId(), service: "/rosapi/get_time", type: "rosapi/GetTime", args: {} });
       }
     }, this.heartbeatIntervalMs);
   }
@@ -398,9 +398,10 @@ export default class EnhancedRos extends EventEmitter implements RosLike {
       console.error('Error parsing message:', error);
     }
   }
-  private handlePng(message: any) {
+  private async handlePng(message: any) {
     if (message.op === 'png') {
-      this.handleMessage(decompressPng(message.data));
+      const decompressedData = await decompressPng(message.data);
+      this.handleMessage(decompressedData);
     } else {
       this.handleMessage(message);
     }

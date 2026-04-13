@@ -101,9 +101,10 @@ export default class Ros extends EventEmitter implements RosLike {
     }
   }
   
-  private handlePng(message: any) {
+  private async handlePng(message: any) {
     if (message.op === 'png') {
-      this.handleMessage(decompressPng(message.data));
+      const decompressedData = await decompressPng(message.data);
+      this.handleMessage(decompressedData);
     } else {
       this.handleMessage(message);
     }
