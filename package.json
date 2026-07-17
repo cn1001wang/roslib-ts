@@ -1,6 +1,6 @@
 {
-  "name": "roslib-ts",
-  "version": "1.0.0-beta.12",
+  "name": "@naviai/roslib-ts",
+  "version": "1.0.0-beta.1",
   "description": "Stable ROSLIB with EnhancedRos (Beta)",
   "author": "naviai",
   "license": "MIT",
@@ -63,7 +63,7 @@
     "typescript": "^5.9.3"
   },
   "publishConfig": {
-    "registry": "https://registry.npmjs.org/",
+    "registry": "http://10.51.33.209:8081/repository/npm-hosted/",
     "access": "public"
   }
 }
