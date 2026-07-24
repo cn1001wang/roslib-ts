@@ -206,8 +206,6 @@ declare class Topic extends EventEmitter {
     unadvertise(): void;
     /** 发布消息 */
     publish(message: any): void;
-    /** 内部状态处理：连接关闭时重置标志位 */
-    private _handleClose;
 }
 
 declare class ServiceRequest {

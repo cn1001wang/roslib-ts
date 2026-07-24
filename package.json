@@ -63,7 +63,7 @@
     "typescript": "^5.9.3"
   },
   "publishConfig": {
-    "registry": "http://10.51.33.209:8081/repository/npm-hosted/",
+    "registry": "http://10.51.33.210:4873/",
     "access": "public"
   }
 }

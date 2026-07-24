@@ -3924,11 +3924,6 @@ class Topic extends EventEmitter {
         super();
         this.isSubscribed = false;
         this.isAdvertised = false;
-        /** 内部状态处理：连接关闭时重置标志位 */
-        this._handleClose = () => {
-            this.isSubscribed = false;
-            this.isAdvertised = false;
-        };
         this.ros = options.ros;
         this.name = options.name;
         this.messageType = options.messageType;
@@ -3950,12 +3945,18 @@ class Topic extends EventEmitter {
     /** 发送底层的订阅协议包 */
     _sendSubscribe() {
         this.isSubscribed = true;
+        // 离线时只保留订阅意图，连接成功后由重连处理器发送，避免与离线队列重复订阅。
+        if (!this.ros.isConnected)
+            return;
         const subscribeMessage = Object.assign(Object.assign(Object.assign({ op: "subscribe", id: "subscribe:" + this.name + ":" + this.ros.getNextId(), topic: this.name, type: this.messageType }, (this.compression && { compression: this.compression })), (this.throttle_rate && { throttle_rate: this.throttle_rate })), (this.queue_length && { queue_length: this.queue_length }));
         this.ros.callOnConnection(subscribeMessage);
     }
     /** 发送底层的公告协议包 */
     _sendAdvertise() {
         this.isAdvertised = true;
+        // 离线时只保留公告意图，连接成功后先公告，再发送离线队列中的发布消息。
+        if (!this.ros.isConnected)
+            return;
         this.advertiseId = "advertise:" + this.name + ":" + this.ros.getNextId();
         const advertiseMessage = Object.assign(Object.assign({ op: "advertise", id: this.advertiseId, topic: this.name, type: this.messageType }, (this.latch && { latch: this.latch })), (this.queue_size && { queue_size: this.queue_size }));
         this.ros.callOnConnection(advertiseMessage);
@@ -3969,10 +3970,8 @@ class Topic extends EventEmitter {
             return;
         // 1. 先尝试移除已有的监听，防止重复挂载
         this.ros.off("connection", this._reconnectHandler);
-        this.ros.off("close", this._handleClose);
         // 2. 挂载监听
         this.ros.on("connection", this._reconnectHandler);
-        this.ros.on("close", this._handleClose);
         // 3. 执行物理订阅
         this._sendSubscribe();
         // 4. 监听来自 ROS 的消息分发
@@ -3986,17 +3985,19 @@ class Topic extends EventEmitter {
     unsubscribe() {
         if (!this.isSubscribed)
             return;
-        const unsubscribeMessage = {
-            op: "unsubscribe",
-            topic: this.name,
-        };
-        this.ros.callOnConnection(unsubscribeMessage);
+        // 先清除订阅意图，避免之后重连时重新订阅。
         this.isSubscribed = false;
+        // 连接已经断开时，服务端旧连接上的订阅也已失效，无需排队取消订阅消息。
+        if (this.ros.isConnected) {
+            this.ros.callOnConnection({
+                op: "unsubscribe",
+                topic: this.name,
+            });
+        }
         // 彻底清理：移除重连监听和消息监听
         this.ros.off(this.name);
         if (!this.isAdvertised) {
             this.ros.off("connection", this._reconnectHandler);
-            this.ros.off("close", this._handleClose);
         }
     }
     /** 公告话题（作为发布者） */
@@ -4005,24 +4006,25 @@ class Topic extends EventEmitter {
             return;
         this.ros.off("connection", this._reconnectHandler);
         this.ros.on("connection", this._reconnectHandler);
-        this.ros.on("close", this._handleClose);
         this._sendAdvertise();
     }
     /** 取消公告 */
     unadvertise() {
         if (!this.isAdvertised)
             return;
-        const unadvertiseMessage = {
-            op: "unadvertise",
-            id: this.advertiseId,
-            topic: this.name,
-        };
-        this.ros.callOnConnection(unadvertiseMessage);
+        // 先清除公告意图，避免之后重连时重新公告。
         this.isAdvertised = false;
+        // 连接已经断开时，服务端旧连接上的公告也已失效，无需排队取消公告消息。
+        if (this.ros.isConnected) {
+            this.ros.callOnConnection({
+                op: "unadvertise",
+                id: this.advertiseId,
+                topic: this.name,
+            });
+        }
         // 如果当前也没有订阅，则可以安全移除重连处理器
         if (!this.isSubscribed) {
             this.ros.off("connection", this._reconnectHandler);
-            this.ros.off("close", this._handleClose);
         }
     }
     /** 发布消息 */

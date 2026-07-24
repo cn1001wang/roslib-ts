@@ -1,92 +1,183 @@
-# roslib-ts
+# @naviai/roslib-ts
 
-🚀 **TypeScript-first ROSLIB implementation.** A lightweight, robust ROSbridge Web client designed for modern frontend engineering.
+A lightweight TypeScript ROSbridge WebSocket client for browsers, React Native, and other JavaScript runtimes.
 
-## ✨ Features
+[简体中文](./README.zh-CN.md) · [API reference](./API.md)
 
-* ✅ **Dual Entrypoints**: Support for Standard (compatible) and `Next` (Production-ready) versions.
-* ✅ **Self-healing Connections**: `Next` version features exponential backoff reconnection and application-level heartbeat detection.
-* ✅ **Offline Message Queueing**: Messages sent while offline are queued and auto-flushed upon reconnection.
-* ✅ **Lifecycle Management**: `TopicManager` with reference counting for automatic sub/unsub and resource cleanup.
-* ✅ **100% TypeScript**: Full interface support with perfect type inference and generics.
+## Features
 
----
+- Two entry points: a small compatible client from the package root and an enhanced client from `/next`
+- Automatic reconnection with exponential backoff
+- Optional heartbeat detection for half-open connections
+- Automatic restoration of active topic subscriptions and advertisements after reconnection
+- FIFO buffering for messages explicitly sent through the offline queue
+- Topic, service, parameter, action, and manager APIs
+- TypeScript declarations for all public exports
 
-## 📦 Install
+## Installation
 
 ```bash
-# Install stable version
-pnpm add roslib-ts
-
-# Install the latest enhanced version (Beta)
-pnpm add roslib-ts@beta
-
+pnpm add @naviai/roslib-ts
 ```
 
----
+Equivalent npm and Yarn commands:
 
-## 🚀 Quick Start
+```bash
+npm install @naviai/roslib-ts
+yarn add @naviai/roslib-ts
+```
 
-### 1. Using Next Version (Recommended for Production)
+## Enhanced client
 
-Import via sub-path `/next`. This version is designed to handle network instability.
+Import from `@naviai/roslib-ts/next` when the application needs reconnection, heartbeat detection, connection states, or manager APIs.
 
-```typescript
-import { Ros, TopicManager, ServiceManager } from 'roslib-ts/next';
+```ts
+import {
+  Ros,
+  RosState,
+  TopicManager,
+  ServiceManager,
+} from '@naviai/roslib-ts/next';
 
-// Initialize enhanced connection
 const ros = new Ros({
   url: 'ws://192.168.1.10:9090',
-  heartbeat_interval_ms: 5000, // 5s heartbeat
-  reconnect_min_delay: 1000    // Exponential backoff
+  reconnect_min_delay: 1_000,
+  reconnect_max_delay: 30_000,
+  heartbeat_interval_ms: 8_000,
 });
 
-// Use Managers for simplified operations
-TopicManager.subscribe('/chatter', 'std_msgs/String', (msg) => {
-  console.log('Received:', msg.data);
+const topics = new TopicManager(ros);
+const services = new ServiceManager(ros);
+
+ros.on('state', (state: RosState) => {
+  console.log('ROS state:', state);
 });
 
-// Publish messages (Automatic queueing if disconnected)
-TopicManager.public('/cmd_vel', 'geometry_msgs/Twist', { linear: { x: 0.5 }, angular: { z: 0.1 } });
+const handleChatter = (message: { data: string }) => {
+  console.log('Received:', message.data);
+};
 
+topics.subscribe('/chatter', 'std_msgs/String', handleChatter);
+
+// Rejects while offline unless queueWhenOffline is true.
+await topics.publish(
+  '/cmd_vel',
+  'geometry_msgs/Twist',
+  {
+    linear: { x: 0.5, y: 0, z: 0 },
+    angular: { x: 0, y: 0, z: 0.1 },
+  },
+  undefined,
+  true,
+);
+
+const time = await services.call('/rosapi/get_time', 'rosapi/GetTime');
+console.log(time);
+
+// Remove this callback. The physical subscription is removed after the last
+// callback for the topic is removed.
+topics.unsubscribe('/chatter', handleChatter);
 ```
 
-### 2. Using Standard Version
+### Connection behavior
 
-For simple use cases requiring basic ROSbridge wrapping.
+| Situation | Behavior |
+| --- | --- |
+| Initial connection fails or the socket closes unexpectedly | Reconnects with exponential backoff up to `reconnect_max_delay` |
+| An active topic subscription reconnects | Sends `subscribe` again automatically |
+| An active publisher reconnects | Sends `advertise` again automatically |
+| `ros.close()` is called | Closes intentionally and does not reconnect |
+| `callOnConnection(message)` is called while offline | Queues the message and flushes it after connection |
+| `TopicManager.publish(..., false)` is called while offline | Rejects without queueing |
+| `TopicManager.publish(..., true)` is called while offline | Queues the publish message for the next connection |
 
-```typescript
-import { Ros, Topic } from 'roslib-ts';
+Subscriptions and advertisements are connection lifecycle state. They are restored on the `connection` event rather than being duplicated in the offline message queue.
+
+### Connection states
+
+The enhanced client exposes:
+
+```text
+IDLE → CONNECTING → CONNECTED
+                    ↓
+               RECONNECTING
+
+CLOSED: closed explicitly
+ERROR: unrecoverable setup error
+```
+
+Use `ros.state`, `ros.isConnected`, or the `state` event to observe changes.
+
+## Direct Topic API
+
+Use `Topic` when manager-level sharing is not required:
+
+```ts
+import { Ros, Topic } from '@naviai/roslib-ts/next';
+
+const ros = new Ros({ url: 'ws://localhost:9090' });
+
+const chatter = new Topic({
+  ros,
+  name: '/chatter',
+  messageType: 'std_msgs/String',
+});
+
+chatter.subscribe((message: { data: string }) => {
+  console.log(message.data);
+});
+
+chatter.publish({ data: 'hello from roslib-ts' });
+
+// Cleanup when the owner is disposed:
+chatter.unsubscribe();
+chatter.unadvertise();
+```
+
+Direct `Topic.publish()` uses the enhanced client's offline queue. Applications that must not replay stale commands after reconnecting should check `ros.isConnected` before publishing, or use `TopicManager.publish()` with its default `queueWhenOffline = false`.
+
+## Standard client
+
+The package root exports the smaller client without enhanced reconnection and heartbeat management:
+
+```ts
+import { Ros, Topic } from '@naviai/roslib-ts';
 
 const ros = new Ros({ url: 'ws://localhost:9090' });
 const cmdVel = new Topic({
   ros,
   name: '/cmd_vel',
-  messageType: 'geometry_msgs/Twist'
+  messageType: 'geometry_msgs/Twist',
 });
 
-cmdVel.publish({ linear: { x: 0.1 }, angular: { z: 0 } });
-
+cmdVel.publish({
+  linear: { x: 0.1, y: 0, z: 0 },
+  angular: { x: 0, y: 0, z: 0 },
+});
 ```
 
----
+## Enhanced client options
 
-## 🛠 Philosophy
+| Option | Default | Description |
+| --- | ---: | --- |
+| `url` | — | Connect immediately to this ROSbridge WebSocket URL |
+| `WebSocket` | global `WebSocket` | Custom WebSocket implementation |
+| `reconnect_min_delay` | `1000` | Initial reconnect delay in milliseconds |
+| `reconnect_max_delay` | `30000` | Maximum reconnect delay in milliseconds |
+| `heartbeat_interval_ms` | `0` | Heartbeat interval; `0` disables heartbeat detection |
+| `heartbeat_fn` | ROS time service call | Custom heartbeat sender |
 
-* **State Machine Isolation**: Underlying connections are abstracted into strict states like `IDLE`, `CONNECTED`, `RECONNECTING`.
-* **Offline Barrier**: Use `messageQueue` to shield business logic from network instability. No `if(isConnected)` checks needed.
-* **Resource Transparency**: Managers handle `advertise` declarations automatically. Physical `unsubscribe` is executed only when the last callback is removed.
+When heartbeat detection is enabled and no server message is received for two heartbeat intervals, the client closes the stale socket and starts reconnection.
 
----
+## API reference
 
-## 📖 API Reference
+See [API.md](./API.md) for the complete API.
 
-More see [API.md](./API.md)
+## Contributing
 
----
+Issues and pull requests are welcome. Before submitting a change:
 
-## 🤝 Contribution
-
-Issues and Pull Requests are welcome.
-
----
+```bash
+pnpm install
+pnpm build
+```

@@ -58,6 +58,10 @@ export default class Topic extends EventEmitter {
   /** 发送底层的订阅协议包 */
   private _sendSubscribe(): void {
     this.isSubscribed = true;
+
+    // 离线时只保留订阅意图，连接成功后由重连处理器发送，避免与离线队列重复订阅。
+    if (!this.ros.isConnected) return;
+
     const subscribeMessage = {
       op: "subscribe",
       id: "subscribe:" + this.name + ":" + this.ros.getNextId(),
@@ -73,6 +77,10 @@ export default class Topic extends EventEmitter {
   /** 发送底层的公告协议包 */
   private _sendAdvertise(): void {
     this.isAdvertised = true;
+
+    // 离线时只保留公告意图，连接成功后先公告，再发送离线队列中的发布消息。
+    if (!this.ros.isConnected) return;
+
     this.advertiseId = "advertise:" + this.name + ":" + this.ros.getNextId();
     const advertiseMessage = {
       op: "advertise",
@@ -94,11 +102,9 @@ export default class Topic extends EventEmitter {
 
     // 1. 先尝试移除已有的监听，防止重复挂载
     this.ros.off("connection", this._reconnectHandler);
-    this.ros.off("close", this._handleClose);
 
     // 2. 挂载监听
     this.ros.on("connection", this._reconnectHandler);
-    this.ros.on("close", this._handleClose);
 
     // 3. 执行物理订阅
     this._sendSubscribe();
@@ -114,20 +120,22 @@ export default class Topic extends EventEmitter {
   unsubscribe(): void {
     if (!this.isSubscribed) return;
 
-    const unsubscribeMessage = {
-      op: "unsubscribe",
-      topic: this.name,
-    };
-
-    this.ros.callOnConnection(unsubscribeMessage);
+    // 先清除订阅意图，避免之后重连时重新订阅。
     this.isSubscribed = false;
+
+    // 连接已经断开时，服务端旧连接上的订阅也已失效，无需排队取消订阅消息。
+    if (this.ros.isConnected) {
+      this.ros.callOnConnection({
+        op: "unsubscribe",
+        topic: this.name,
+      });
+    }
 
     // 彻底清理：移除重连监听和消息监听
 
     this.ros.off(this.name);
     if (!this.isAdvertised) {
       this.ros.off("connection", this._reconnectHandler);
-      this.ros.off("close", this._handleClose);
     }
   }
 
@@ -137,7 +145,6 @@ export default class Topic extends EventEmitter {
 
     this.ros.off("connection", this._reconnectHandler);
     this.ros.on("connection", this._reconnectHandler);
-    this.ros.on("close", this._handleClose);
 
     this._sendAdvertise();
   }
@@ -146,19 +153,21 @@ export default class Topic extends EventEmitter {
   unadvertise(): void {
     if (!this.isAdvertised) return;
 
-    const unadvertiseMessage = {
-      op: "unadvertise",
-      id: this.advertiseId!,
-      topic: this.name,
-    };
-
-    this.ros.callOnConnection(unadvertiseMessage);
+    // 先清除公告意图，避免之后重连时重新公告。
     this.isAdvertised = false;
+
+    // 连接已经断开时，服务端旧连接上的公告也已失效，无需排队取消公告消息。
+    if (this.ros.isConnected) {
+      this.ros.callOnConnection({
+        op: "unadvertise",
+        id: this.advertiseId!,
+        topic: this.name,
+      });
+    }
 
     // 如果当前也没有订阅，则可以安全移除重连处理器
     if (!this.isSubscribed) {
       this.ros.off("connection", this._reconnectHandler);
-      this.ros.off("close", this._handleClose);
     }
   }
 
@@ -178,10 +187,4 @@ export default class Topic extends EventEmitter {
 
     this.ros.callOnConnection(publishMessage);
   }
-
-  /** 内部状态处理：连接关闭时重置标志位 */
-  private _handleClose = () => {
-    this.isSubscribed = false;
-    this.isAdvertised = false;
-  };
 }
